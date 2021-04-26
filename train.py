@@ -1,6 +1,6 @@
-"""Train a model on SQuAD.
-Author:
-    Chris Chute (chute@stanford.edu)
+"""
+Train a model on SQuAD.
+
 """
 
 import numpy as np

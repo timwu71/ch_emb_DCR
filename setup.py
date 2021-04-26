@@ -1,4 +1,5 @@
-"""Download and pre-process SQuAD and GloVe.
+"""
+Download and pre-process SQuAD and GloVe.
 
 Usage:
     > source activate squad
@@ -7,8 +8,6 @@ Usage:
 Pre-processing code adapted from:
     > https://github.com/HKUST-KnowComp/R-Net/blob/master/prepro.py
 
-Author:
-    Chris Chute (chute@stanford.edu)
 """
 
 import numpy as np

@@ -29,7 +29,7 @@ class BiDAF(nn.Module):
         hidden_size (int): Number of features in the hidden state at each layer.
         drop_prob (float): Dropout probability.
     """
-    def __init__(self, word_vectors, ch_vectors, hidden_size, drop_prob=0.2):
+    def __init__(self, word_vectors, ch_vectors, hidden_size, drop_prob=0.):
         super(BiDAF, self).__init__()
         torch.cuda.empty_cache()
         self.emb = layers.Embedding(word_vectors=word_vectors, ch_vectors=ch_vectors,
@@ -49,8 +49,9 @@ class BiDAF(nn.Module):
                                      num_layers=2,
                                      drop_prob=drop_prob)
 
-        self.out = layers.BiDAFOutput(hidden_size=hidden_size,
-                                      drop_prob=drop_prob)
+        self.chunk = layers.ChunkLayer(hidden_size=hidden_size, max_ans_len=10)
+
+        self.out = layers.BiDAFOutput(hidden_size=hidden_size, max_ans_len=10)
 
     def forward(self, cw_idxs, qw_idxs, cc_idxs, qc_idxs):
         c_mask = torch.zeros_like(cw_idxs) != cw_idxs
@@ -68,9 +69,10 @@ class BiDAF(nn.Module):
 
         mod = self.mod(att, c_len)        # (batch_size, c_len, 2 * hidden_size)
 
-        # chunk = self.chunk(mod)
+        chunk = self.chunk(mod)
         
-        # out = self.out(chunk, q_enc)  # 2 tensors, each (batch_size, c_len)
+        out = self.out(chunk, q_enc)  # 2 tensors, each (batch_size, c_len)
 
-        out = self.out(att, mod, c_mask)  # 2 tensors, each (batch_size, c_len)
+        # out = self.out(att, mod, c_mask)  # 2 tensors, each (batch_size, c_len)
+        torch.cuda.empty_cache()
         return out

@@ -1,4 +1,5 @@
 """Train a model on SQuAD.
+
 Author:
     Chris Chute (chute@stanford.edu)
 """
@@ -31,6 +32,7 @@ def main(args):
     device, args.gpu_ids = util.get_available_devices()
     log.info(f'Args: {dumps(vars(args), indent=4, sort_keys=True)}')
     args.batch_size *= max(1, len(args.gpu_ids))
+    max_len = 10
 
     # Set random seed
     log.info(f'Using random seed {args.seed}...')
@@ -96,37 +98,52 @@ def main(args):
         with torch.enable_grad(), \
                 tqdm(total=len(train_loader.dataset)) as progress_bar:
             for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in train_loader:
-            # Setup for forward
+                # Setup for forward
                 cw_idxs = cw_idxs.to(device)
                 qw_idxs = qw_idxs.to(device)
                 cc_idxs = cc_idxs.to(device)
-                qc_idxs = qc_idxs.to(device)    
+                qc_idxs = qc_idxs.to(device)
                 batch_size = cw_idxs.size(0)
+                optimizer.zero_grad()
 
                 # Forward
-                log_p1, log_p2 = model(cw_idxs, qw_idxs, cc_idxs, qc_idxs)
+                log_p = model(cw_idxs, qw_idxs, cc_idxs, qc_idxs)
                 y1, y2 = y1.to(device), y2.to(device)
-                loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2)
+                #print("ckpt 1")
+                ans_lens = y2 - y1
+                loss = 0
+                for i in range(max_len):
+                    mask = ((torch.ones_like(y1) * i) == ans_lens).type(torch.cuda.LongTensor)
+                    y = y1 * mask
+                    loss += F.nll_loss(log_p[:,:,i], y)
+                #print("ckpt 2")
                 loss_val = loss.item()
-
+                #print("ckpt 3")
                 # Backward
                 loss.backward()
+                #print("ckpt 4")
                 nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                #print("ckpt 5")
                 optimizer.step()
+                #print("ckpt 6")
                 scheduler.step(step // batch_size)
                 ema(model, step // batch_size)
+                #print("ckpt 7")
 
                 # Log info
                 step += batch_size
                 progress_bar.update(batch_size)
                 progress_bar.set_postfix(epoch=epoch,
                                          NLL=loss_val)
+                if step % (50 * batch_size) == 0:
+                    print(loss_val)
                 tbx.add_scalar('train/NLL', loss_val, step)
                 tbx.add_scalar('train/LR',
                                optimizer.param_groups[0]['lr'],
                                step)
 
                 steps_till_eval -= batch_size
+                #print("ckpt 8")
                 if steps_till_eval <= 0:
                     steps_till_eval = args.eval_steps
 
@@ -174,15 +191,26 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
             batch_size = cw_idxs.size(0)
 
             # Forward
-            log_p1, log_p2 = model(cw_idxs, qw_idxs, cc_idxs, qc_idxs)
+            log_p = model(cw_idxs, qw_idxs, cc_idxs, qc_idxs)
             y1, y2 = y1.to(device), y2.to(device)
-            loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2)
+            #print("ckpt 1")
+            ans_lens = y2 - y1
+            loss = 0
+            for i in range(max_len):
+                mask = ((torch.ones_like(y1) * i) == ans_lens).type(torch.cuda.LongTensor)
+                y = y1 * mask
+                loss += F.nll_loss(log_p[:,:,i], y)
+            
             nll_meter.update(loss.item(), batch_size)
 
-
             # Get F1 and EM scores
-            p1, p2 = log_p1.exp(), log_p2.exp()
-            starts, ends = util.discretize(p1, p2, max_len, use_squad_v2)
+            log_p, ans_len = torch.max(log_p, dim=-1)
+            starts = torch.max(log_p, dim=-1)[1]
+            ends = starts
+            for i in range(starts.size(0)):
+                ends[i] += ans_len.type(torch.cuda.LongTensor)[i, starts[i]]
+            # print("starts and ends:", starts, ends, starts.size(), ends.size())
+            # starts, ends = util.discretize(p, p + ans_lens, max_len, use_squad_v2)
 
             # Log info
             progress_bar.update(batch_size)

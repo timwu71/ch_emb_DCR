@@ -31,7 +31,6 @@ class BiDAF(nn.Module):
     """
     def __init__(self, word_vectors, ch_vectors, hidden_size, drop_prob=0.2):
         super(BiDAF, self).__init__()
-        torch.cuda.empty_cache()
         self.emb = layers.Embedding(word_vectors=word_vectors, ch_vectors=ch_vectors,
                                     hidden_size=hidden_size,
                                     drop_prob=drop_prob)
@@ -68,9 +67,6 @@ class BiDAF(nn.Module):
 
         mod = self.mod(att, c_len)        # (batch_size, c_len, 2 * hidden_size)
 
-        # chunk = self.chunk(mod)
-        
-        # out = self.out(chunk, q_enc)  # 2 tensors, each (batch_size, c_len)
-
         out = self.out(att, mod, c_mask)  # 2 tensors, each (batch_size, c_len)
+
         return out
